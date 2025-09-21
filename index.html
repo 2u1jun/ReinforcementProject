@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CartPole: 균형의 예술</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700&family=Orbitron:wght@400;700&display=swap');
+
+        :root {
+            --bg-color: #1a1a1a;
+            --primary-color: #00aaff;
+            --secondary-color: #ff0077;
+            --text-color: #f0f0f0;
+            --ground-color: #333;
+            --cart-color: #e0e0e0;
+            --pole-color: #00aaff;
+            --fail-color: #ff4444;
+            --pole-shadow-color: rgba(0, 170, 255, 0.5);
+            --font-display: 'Orbitron', sans-serif;
+            --font-body: 'Noto Sans KR', sans-serif;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: var(--font-body);
+            overflow: hidden;
+            -webkit-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+
+        .game-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .game-container {
+            position: relative;
+            width: 95vw;
+            height: 70vh;
+            max-width: 1000px;
+            max-height: 550px;
+            box-shadow: 0 0 30px rgba(0,0,0,0.5);
+            background-color: #252525;
+            background-image: 
+                linear-gradient(rgba(0, 170, 255, 0.1) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 170, 255, 0.1) 1px, transparent 1px);
+            background-size: 50px 50px;
+            background-position: 0px 0px;
+            border-radius: 15px;
+            overflow: hidden;
+            transition: background-position 0.1s linear;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            padding: 20px;
+            box-sizing: border-box;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+        }
+
+        .ui-overlay.visible {
+            opacity: 1;
+        }
+
+        .top-ui {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            font-family: var(--font-display);
+            font-size: 1.8rem;
+            text-shadow: 0 0 10px var(--primary-color);
+        }
+
+        .status-indicator {
+            padding: 8px 15px;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 700;
+            transition: all 0.3s ease;
+        }
+
+        .status-user { background-color: var(--primary-color); color: var(--bg-color); }
+        .status-ai { background-color: var(--secondary-color); color: var(--bg-color); }
+        .status-training { background-color: #ffaa00; color: var(--bg-color); }
+        #ws-status { font-size: 0.9rem; margin-top: 5px; opacity: 0.7; }
+
+        #modal {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            z-index: 100;
+            opacity: 1;
+            transition: opacity 0.3s ease, visibility 0.3s;
+            visibility: visible;
+        }
+        
+        #modal.hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        .modal-content {
+            text-align: center;
+            padding: 40px;
+            background: rgba(40, 40, 40, 0.9);
+            border-radius: 15px;
+            box-shadow: 0 0 25px rgba(0,0,0,0.5);
+            border: 1px solid var(--primary-color);
+            transform: scale(0.9);
+            transition: transform 0.3s ease;
+        }
+        
+        #modal:not(.hidden) .modal-content {
+             transform: scale(1);
+        }
+
+        #modal h1 {
+            font-family: var(--font-display);
+            font-size: 3rem;
+            margin-bottom: 10px;
+            color: var(--primary-color);
+            text-shadow: 0 0 15px var(--primary-color);
+        }
+
+        #modal p {
+            margin-bottom: 30px;
+            font-size: 1.2rem;
+            color: var(--text-color);
+        }
+        
+        #modal button {
+            font-family: var(--font-display);
+            background: transparent;
+            color: var(--text-color);
+            border: 2px solid var(--text-color);
+            padding: 12px 25px;
+            margin: 0 10px;
+            font-size: 1rem;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            pointer-events: all;
+        }
+
+        #modal button:hover {
+            background: var(--primary-color);
+            color: var(--bg-color);
+            border-color: var(--primary-color);
+            box-shadow: 0 0 15px var(--primary-color);
+        }
+        
+        #modal button.ai-btn:hover {
+             background: var(--secondary-color);
+             border-color: var(--secondary-color);
+             box-shadow: 0 0 15px var(--secondary-color);
+        }
+        
+        #modal button.training-btn:hover {
+            background: #ffaa00;
+            border-color: #ffaa00;
+            box-shadow: 0 0 15px #ffaa00;
+        }
+
+        /* Controls outside the canvas */
+        #controls-container {
+            text-align: center;
+            color: rgba(240, 240, 240, 0.6);
+            display: none; /* Initially hidden */
+        }
+
+        #touch-controls {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+            margin-top: 10px;
+        }
+
+        .touch-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        .touch-btn {
+            width: 60px;
+            height: 60px;
+            background-color: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent; /* Disable blue tap highlight on mobile */
+        }
+
+        .touch-btn:active {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+
+    </style>
+</head>
+<body>
+    <div class="game-wrapper">
+        <div class="game-container">
+            <canvas id="game-canvas"></canvas>
+            <div id="ui-overlay" class="ui-overlay">
+                <div class="top-ui">
+                    <div id="status-display">
+                        <div id="game-mode-indicator" class="status-indicator status-user">USER MODE</div>
+                        <div id="ws-status">WebSocket: Disconnected</div>
+                    </div>
+                    <div>SCORE: <span id="score">0</span></div>
+                </div>
+            </div>
+            <div id="modal">
+                <div class="modal-content">
+                    <h1>CartPole</h1>
+                    <p>균형의 예술</p>
+                    <div>
+                        <button id="user-mode-btn">USER PLAY</button>
+                        <button id="ai-mode-btn" class="ai-btn">AI PLAY</button>
+                        <button id="training-mode-btn" class="training-btn">TRAINING</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="controls-container">
+            <div class="bottom-ui">
+                <p id="instructions">← → or A/D to move | ↑ ↓ to change speed</p>
+                <p id="speed-indicator">SPEED: 1.0x</p>
+            </div>
+            <div id="touch-controls">
+                <div class="touch-row">
+                    <button class="touch-btn" id="touch-up">▲</button>
+                </div>
+                <div class="touch-row">
+                    <button class="touch-btn" id="touch-left">◄</button>
+                    <button class="touch-btn" id="touch-down">▼</button>
+                    <button class="touch-btn" id="touch-right">►</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+    <script>
+        // --- Matter.js Module Aliases ---
+        const { Engine, Render, Runner, World, Bodies, Body, Events, Composite, Vector } = Matter;
+
+        // --- Game Configuration ---
+        const CONFIG = {
+            GAME_WIDTH: 1000,
+            GAME_HEIGHT: 600,
+            GROUND_HEIGHT: 60,
+            CART_WIDTH: 100,
+            CART_HEIGHT: 50,
+            POLE_WIDTH: 20,
+            POLE_HEIGHT: 150,
+            FAILURE_ANGLE_DEG: 15,
+            USER_FORCE: 0.005, // 유저 조작을 위한 기본 힘
+            PIVOT_OFFSET_Y: -15,
+            CART_MAX_SPEED_MULTIPLIER: 2.0,
+            CART_MIN_SPEED_MULTIPLIER: 0.5,
+            WORLD_WIDTH_MULTIPLIER: 5,
+        };
+
+        // --- DOM Elements ---
+        const gameContainer = document.querySelector('.game-container');
+        const canvas = document.getElementById('game-canvas');
+        const scoreEl = document.getElementById('score');
+        const modal = document.getElementById('modal');
+        const gameModeIndicator = document.getElementById('game-mode-indicator');
+        const wsStatusEl = document.getElementById('ws-status');
+        const uiOverlay = document.getElementById('ui-overlay');
+        const speedIndicatorEl = document.getElementById('speed-indicator');
+        const controlsContainer = document.getElementById('controls-container');
+        
+        // --- Color Palette from CSS ---
+        const STYLES = getComputedStyle(document.documentElement);
+        const COLORS = {
+            GROUND: STYLES.getPropertyValue('--ground-color').trim(),
+            CART: STYLES.getPropertyValue('--cart-color').trim(),
+            POLE: STYLES.getPropertyValue('--pole-color').trim(),
+            FAIL: STYLES.getPropertyValue('--fail-color').trim(),
+        };
+
+        // --- Game State ---
+        let engine, world, render, runner;
+        let cart, pole, ground;
+        let score = 0;
+        let isRoundOver = true;
+        let gameMode = 'USER';
+        let ws;
+        let cartSpeedMultiplier = 1.0;
+        let worldWidth;
+        let worldBounds;
+        let ortSession;
+        let isModelReady = false; // AI 모델 준비 완료 플래그
+        let latestAiAction = 0;
+        let aiDecisionIntervalId = null;
+        
+        // --- Sound Effects ---
+        let synth, moveSynth;
+        function setupSounds() {
+            synth = new Tone.PolySynth(Tone.Synth, {
+                oscillator: { type: "square" },
+                envelope: { attack: 0.01, decay: 0.1, sustain: 0.2, release: 0.1 },
+            }).toDestination();
+            moveSynth = new Tone.NoiseSynth({
+                noise: { type: "pink" },
+                envelope: { attack: 0.001, decay: 0.05, sustain: 0 }
+            }).toDestination();
+            moveSynth.volume.value = -20;
+        }
+
+        // --- Control State ---
+        const keys = {};
+        const touchState = { up: false, down: false, left: false, right: false };
+        window.addEventListener('keydown', e => { keys[e.code] = true; });
+        window.addEventListener('keyup', e => { keys[e.code] = false; });
+        
+        // --- Collision Categories ---
+        const COLLISION = {
+            DEFAULT: 0x0001,
+            CART: 0x0002,
+            POLE: 0x0004
+        };
+
+        async function loadOnnxModel() {
+            try {
+                ortSession = await ort.InferenceSession.create('./model.onnx');
+                if (ortSession && ortSession.inputNames && ortSession.inputNames.length > 0) {
+                    isModelReady = true;
+                    console.log("ONNX model is fully loaded and ready.");
+                    if (gameMode === 'AI' && !aiDecisionIntervalId) {
+                        wsStatusEl.textContent = "AI Model: Loaded";
+                        wsStatusEl.style.color = '#0f0';
+                        startAIDecisionLoop();
+                    }
+                } else {
+                    throw new Error("Model metadata (inputNames) not available after creation.");
+                }
+            } catch (e) {
+                console.error(`Failed to load ONNX model: ${e}`);
+                isModelReady = false;
+                if (gameMode === 'AI') {
+                    wsStatusEl.textContent = "AI Model: Load Failed";
+                    wsStatusEl.style.color = '#f00';
+                }
+            }
+        }
+
+        function setupTouchControls() {
+            const upBtn = document.getElementById('touch-up');
+            const downBtn = document.getElementById('touch-down');
+            const leftBtn = document.getElementById('touch-left');
+            const rightBtn = document.getElementById('touch-right');
+
+            const handleTouchStart = (dir) => (e) => { e.preventDefault(); touchState[dir] = true; };
+            const handleTouchEnd = (dir) => (e) => { e.preventDefault(); touchState[dir] = false; };
+            
+            const addListeners = (btn, dir) => {
+                btn.addEventListener('mousedown', handleTouchStart(dir));
+                btn.addEventListener('touchstart', handleTouchStart(dir), { passive: false });
+                btn.addEventListener('mouseup', handleTouchEnd(dir));
+                btn.addEventListener('mouseleave', handleTouchEnd(dir));
+                btn.addEventListener('touchend', handleTouchEnd(dir));
+            };
+
+            addListeners(upBtn, 'up');
+            addListeners(downBtn, 'down');
+            addListeners(leftBtn, 'left');
+            addListeners(rightBtn, 'right');
+        }
+
+        function init() {
+            engine = Engine.create();
+            world = engine.world;
+            world.gravity.y = 1;
+
+            render = Render.create({
+                canvas: canvas,
+                engine: engine,
+                options: {
+                    width: CONFIG.GAME_WIDTH,
+                    height: CONFIG.GAME_HEIGHT,
+                    wireframes: false,
+                    background: 'transparent',
+                }
+            });
+
+            runner = Runner.create();
+            
+            document.getElementById('user-mode-btn').addEventListener('click', () => setGameMode('USER'));
+            document.getElementById('ai-mode-btn').addEventListener('click', () => setGameMode('AI'));
+            document.getElementById('training-mode-btn').addEventListener('click', () => setGameMode('TRAINING'));
+
+            const savedMode = sessionStorage.getItem('cartpole_gameMode');
+            if (savedMode === 'TRAINING') {
+                setGameMode('TRAINING');
+            } else {
+                modal.classList.remove('hidden');
+            }
+            
+            Render.run(render);
+            Runner.run(runner, engine);
+            Events.on(engine, 'beforeUpdate', gameLoop);
+            setupTouchControls();
+            loadOnnxModel();
+        }
+
+        function startAIDecisionLoop() {
+            if (aiDecisionIntervalId) return;
+            aiDecisionIntervalId = setInterval(makeAIDecision, 50);
+            console.log("AI decision loop started.");
+        }
+
+        function stopAIDecisionLoop() {
+             if (aiDecisionIntervalId) {
+                clearInterval(aiDecisionIntervalId);
+                aiDecisionIntervalId = null;
+                console.log("AI decision loop stopped.");
+            }
+        }
+        
+        function setGameMode(mode) {
+            if (Tone.context.state !== 'running') {
+                Tone.start();
+                setupSounds();
+            }
+            gameMode = mode;
+            sessionStorage.setItem('cartpole_gameMode', mode);
+            updateUIMode();
+
+            stopAIDecisionLoop();
+            
+            if (runner) {
+                runner.enabled = (mode !== 'TRAINING');
+            }
+
+            // Show/hide controls based on mode
+            controlsContainer.style.display = (mode === 'USER') ? 'block' : 'none';
+
+            if (ws && ws.readyState === WebSocket.OPEN) ws.close();
+            
+            if (mode === 'TRAINING') {
+                connectWebSocket();
+            } else if (mode === 'AI') {
+                wsStatusEl.textContent = isModelReady ? "AI Model: Loaded" : "AI Model: Loading...";
+                wsStatusEl.style.color = isModelReady ? '#0f0' : '#ff0';
+                if (isModelReady) {
+                    startAIDecisionLoop();
+                }
+            } else {
+                wsStatusEl.textContent = "Mode: User Play";
+                wsStatusEl.style.color = '#fff';
+            }
+            
+            modal.classList.add('hidden');
+            uiOverlay.classList.add('visible');
+            resetGame();
+        }
+        
+        function updateUIMode() {
+             gameModeIndicator.textContent = `${gameMode} MODE`;
+             gameModeIndicator.className = 'status-indicator';
+             gameModeIndicator.classList.add(`status-${gameMode.toLowerCase()}`);
+        }
+        
+        async function makeAIDecision() {
+            try {
+                if (isRoundOver || !isModelReady) return; 
+                
+                const observation = getObservation();
+                const tensor = new ort.Tensor('float32', Float32Array.from(observation), [1, observation.length]);
+                
+                const inputName = ortSession.inputNames[0];
+                const outputName = ortSession.outputNames[0];
+
+                const feeds = { [inputName]: tensor };
+                const results = await ortSession.run(feeds);
+                
+                const modelOutput = results[outputName].data[0];
+                
+                if (typeof modelOutput === 'number' && isFinite(modelOutput)) {
+                    latestAiAction = modelOutput;
+                } else {
+                    console.warn('Invalid AI model output:', modelOutput);
+                    latestAiAction = 0;
+                }
+                
+            } catch (e) {
+                console.error("AI decision loop error:", e);
+                latestAiAction = 0;
+            }
+        }
+
+        function gameLoop() {
+            if (isRoundOver) return;
+            
+            if (gameMode === 'USER') {
+                handleUserInput();
+            } else if (gameMode === 'AI') {
+                const force = latestAiAction * CONFIG.USER_FORCE;
+                if (isFinite(force)) {
+                    Body.applyForce(cart, cart.position, { x: force, y: 0 });
+                }
+            }
+            
+            checkWorldBounds(); 
+            updateCameraAndBackground(); 
+            
+            checkFailureConditions();
+            updateScore();
+        }
+
+        function checkWorldBounds() {
+            if (!cart || !pole) return;
+
+            const cartX = cart.position.x;
+            if (cartX > worldBounds.right) {
+                Body.setPosition(cart, { x: worldBounds.left + (cartX - worldBounds.right), y: cart.position.y });
+                Body.setPosition(pole, { x: worldBounds.left + (cartX - worldBounds.right), y: pole.position.y });
+            } else if (cartX < worldBounds.left) {
+                Body.setPosition(cart, { x: worldBounds.right - (worldBounds.left - cartX), y: cart.position.y });
+                Body.setPosition(pole, { x: worldBounds.right - (worldBounds.left - cartX), y: pole.position.y });
+            }
+        }
+
+        function updateCameraAndBackground() {
+            if (!cart) return;
+            const targetX = cart.position.x;
+            const currentCenterX = (render.bounds.min.x + render.bounds.max.x) / 2;
+            const newCenterX = currentCenterX + (targetX - currentCenterX) * 0.1; // Smooth LERP
+
+            Render.lookAt(render, {
+                min: { x: newCenterX - CONFIG.GAME_WIDTH / 2, y: 0 },
+                max: { x: newCenterX + CONFIG.GAME_WIDTH / 2, y: CONFIG.GAME_HEIGHT }
+            });
+
+            const scrollFactor = 1.0;
+            const bgPosX = -(newCenterX - CONFIG.GAME_WIDTH / 2) * scrollFactor;
+            gameContainer.style.backgroundPosition = `${bgPosX}px 0px`;
+        }
+        
+        function handleUserInput() {
+            // Speed control
+            if (keys['ArrowUp'] || touchState.up) {
+                cartSpeedMultiplier = Math.min(CONFIG.CART_MAX_SPEED_MULTIPLIER, cartSpeedMultiplier + 0.02);
+                updateSpeedIndicator();
+            }
+            if (keys['ArrowDown'] || touchState.down) {
+                cartSpeedMultiplier = Math.max(CONFIG.CART_MIN_SPEED_MULTIPLIER, cartSpeedMultiplier - 0.02);
+                updateSpeedIndicator();
+            }
+
+            // Movement control
+            let force = 0;
+            const forceValue = CONFIG.USER_FORCE * cartSpeedMultiplier;
+            if (keys['ArrowLeft'] || keys['KeyA'] || touchState.left) force = -forceValue;
+            if (keys['ArrowRight'] || keys['KeyD'] || touchState.right) force = forceValue;
+            
+            if (force !== 0) {
+                 Body.applyForce(cart, cart.position, { x: force, y: 0 });
+                 if(moveSynth) moveSynth.triggerAttack();
+            }
+        }
+
+        function updateSpeedIndicator() {
+            speedIndicatorEl.textContent = `SPEED: ${cartSpeedMultiplier.toFixed(1)}x`;
+        }
+
+        function checkFailureConditions() {
+            if (!pole) return;
+            const poleAngleDeg = pole.angle * (180 / Math.PI);
+            if (Math.abs(poleAngleDeg) > CONFIG.FAILURE_ANGLE_DEG) {
+                endRound();
+            }
+        }
+        
+        function endRound() {
+            if (isRoundOver) return;
+            isRoundOver = true;
+            
+            if(synth) synth.triggerAttackRelease("C2", "0.5");
+
+            pole.collisionFilter.mask = 0;
+            pole.render.fillStyle = COLORS.FAIL;
+            
+            if (gameMode === 'USER' || gameMode === 'AI') {
+                setTimeout(resetGame, 1500);
+            }
+        }
+
+        function resetGame() {
+            isRoundOver = false;
+            score = 0;
+            scoreEl.textContent = 0;
+            cartSpeedMultiplier = 1.0;
+            updateSpeedIndicator();
+            latestAiAction = 0;
+            
+            World.clear(world);
+
+            const startX = CONFIG.GAME_WIDTH / 2;
+            
+            worldWidth = CONFIG.GAME_WIDTH * CONFIG.WORLD_WIDTH_MULTIPLIER;
+            worldBounds = {
+                left: startX - worldWidth / 2,
+                right: startX + worldWidth / 2
+            };
+
+            ground = Bodies.rectangle(
+                startX, CONFIG.GAME_HEIGHT - CONFIG.GROUND_HEIGHT / 2, 
+                worldWidth, CONFIG.GROUND_HEIGHT, 
+                { isStatic: true, render: { fillStyle: COLORS.GROUND } }
+            );
+
+            const startY = CONFIG.GAME_HEIGHT - CONFIG.GROUND_HEIGHT - CONFIG.CART_HEIGHT / 2;
+
+            cart = Bodies.rectangle(startX, startY, CONFIG.CART_WIDTH, CONFIG.CART_HEIGHT, {
+                friction: 0.01, restitution: 0,
+                collisionFilter: { category: COLLISION.CART, mask: COLLISION.DEFAULT },
+                render: { fillStyle: COLORS.CART },
+            });
+            Body.setInertia(cart, Infinity);
+
+            const poleStartY = startY + CONFIG.PIVOT_OFFSET_Y - (CONFIG.POLE_HEIGHT / 2);
+
+            pole = Bodies.rectangle(
+                startX, poleStartY,
+                CONFIG.POLE_WIDTH, CONFIG.POLE_HEIGHT, {
+                density: 0.0005, frictionAir: 0.005, restitution: 0,
+                collisionFilter: { category: COLLISION.POLE, mask: COLLISION.DEFAULT },
+                render: { fillStyle: COLORS.POLE, strokeStyle: 'white', lineWidth: 2 }
+            });
+
+            const pivotPoint = { x: 0, y: CONFIG.POLE_HEIGHT / 2 };
+            const constraint = Matter.Constraint.create({
+                bodyA: cart, bodyB: pole,
+                pointA: { x: 0, y: CONFIG.PIVOT_OFFSET_Y }, 
+                pointB: pivotPoint,
+                stiffness: 1, length: 0, render: { visible: false }
+            });
+
+            World.add(world, [ground, cart, pole, constraint]);
+
+            Render.lookAt(render, {
+                min: { x: 0, y: 0 },
+                max: { x: CONFIG.GAME_WIDTH, y: CONFIG.GAME_HEIGHT }
+            });
+            
+            gameContainer.style.backgroundPosition = '0px 0px';
+
+            const minTiltRad = 0.017; // ~1 degree
+            const maxTiltRad = 0.05;  // ~2.8 degrees
+            const tiltMagnitude = minTiltRad + Math.random() * (maxTiltRad - minTiltRad);
+            const tiltDirection = Math.random() > 0.5 ? 1 : -1;
+            Body.setAngle(pole, tiltMagnitude * tiltDirection);
+        }
+        
+        function updateScore() {
+            score++;
+            scoreEl.textContent = score;
+        }
+
+        function connectWebSocket() {
+            ws = new WebSocket("ws://localhost:8765");
+            ws.onopen = () => {
+                wsStatusEl.textContent = "WebSocket: Connected";
+                wsStatusEl.style.color = '#0f0';
+            };
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.command === 'reset') resetForTraining();
+                else if (data.command === 'action') stepGameForTraining(data.action);
+            };
+            ws.onclose = () => {
+                wsStatusEl.textContent = "WebSocket: Disconnected";
+                wsStatusEl.style.color = '#f00';
+            };
+            ws.onerror = (error) => {
+                wsStatusEl.textContent = "WebSocket: Error";
+                wsStatusEl.style.color = '#f80';
+                console.error("WebSocket Error: ", error);
+            };
+        }
+
+        function getObservation() {
+            if (!cart || !pole) return [0, 0, 0, 0]; // Return a default observation if bodies don't exist
+            const normalizedX = (cart.position.x % CONFIG.GAME_WIDTH) / CONFIG.GAME_WIDTH;
+            return [
+                normalizedX,
+                cart.velocity.x,
+                pole.angle,
+                pole.angularVelocity
+            ];
+        }
+
+        function resetForTraining() {
+            resetGame();
+            isRoundOver = false;
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ observation: getObservation() }));
+            }
+        }
+        
+        function stepGameForTraining(action) {
+            if (isRoundOver) return;
+            
+            const force = action * CONFIG.USER_FORCE;
+            Body.applyForce(cart, cart.position, { x: force, y: 0 });
+            
+            Engine.update(engine, 1000 / 60);
+            checkWorldBounds(); 
+            
+            checkFailureConditions();
+            
+            const reward = isRoundOver ? 0 : 1;
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    observation: getObservation(),
+                    reward: reward,
+                    done: isRoundOver
+                }));
+            }
+
+            if (isRoundOver && gameMode === 'TRAINING') {
+                resetForTraining();
+            }
+        }
+        init();
+    </script>
+</body>
+</html>
+
